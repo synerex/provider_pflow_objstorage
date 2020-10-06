@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -37,7 +36,7 @@ var (
 	currentNid      uint64                  = 0 // NotifyDemand message ID
 	mbusID          uint64                  = 0 // storage MBus ID
 	storageID       uint64                  = 0 // storageID
-	pcClient        *sxutil.SXServiceClient = nil
+	pfClient        *sxutil.SXServiceClient = nil
 	stClient        *sxutil.SXServiceClient = nil
 	pfblocks        map[string]*PFlowBlock  = map[string]*PFlowBlock{}
 )
@@ -53,27 +52,27 @@ func objStore(bc string, ob string, dt string) {
 		BucketName: bc,
 		ObjectName: ob,
 		Record:     []byte(dt),
+		Option:     []byte("raw"),
 	}
 	out, err := proto.Marshal(&record)
-	if err == nil && mbusID != 0 {
+	if err == nil {
 		cont := &api.Content{Entity: out}
-		msg := &api.MbusMsg{
-			MsgInfo:  "Store", // command
-			TargetId: storageID,
-			Cdata:    cont,
+		smo := sxutil.SupplyOpts{
+			Name:  "Record", // command
+			Cdata: cont,
 		}
-		stClient.SendMbusMsg(context.Background(), msg)
+		stClient.NotifySupply(&smo)
 	}
 
 }
 
 // called for each agent data.
-func supplyPCounterCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
+func supplyPFlowCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 
 	pc := &pflow.PFlow{}
 
 	err := proto.Unmarshal(sp.Cdata.Entity, pc)
-	if err == nil { // get Pcounter
+	if err == nil { // get PFlow
 		tsd, _ := ptypes.Timestamp(pc.StartTime)
 
 		// how to define Bucket:
@@ -86,92 +85,27 @@ func supplyPCounterCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 		data, err := json.Marshal(pc)
 
 		if err == nil {
-			log.Printf("%+v\n", data)
+			// log.Printf("Storing: %+v\n", data)
 			// pfblocks に登録
 			// 30秒程度ごとに pfblocks を監視
 			// prevlen と長さが同じになったもの かつ 最低1分は経った block から objStore
 			objStore(bucketName, objectName, string(data)+"\n")
 		} else {
-			log.Printf("%+v\n", err)
+			log.Printf("Error!!: %+v\n", err)
 		}
 	}
-}
-
-func subscribePCounterSupply(client *sxutil.SXServiceClient) {
-	log.Printf("Start PCounter Supply")
-
-	pcMu, pcLoop = sxutil.SimpleSubscribeSupply(client, supplyPCounterCallback)
-
-}
-
-func mbusCallback(clt *sxutil.SXServiceClient, mm *api.MbusMsg) {
-	log.Printf("Mbus message %#v", mm)
-
-	/*
-		if sxutil.IDType(mm.TargetId) == clt.ClientID { // this msg is for me.
-			if mm.MsgInfo == "Store" {
-				record := &storage.Record{}
-				err := proto.Unmarshal(mm.Cdata.Entity, record)
-				if err == nil {
-				}
-			}
-		}
-	*/
-
-}
-
-func supplyStorageCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
-	//	log.Printf("Receive Supply! %v", sp)
-	if sp.SupplyName == "Storage" {
-		storageInfo := &storage.Storage{}
-		// propose supply!?
-		if sp.TargetId != 0 {
-			if currentNid == sp.TargetId {
-				// should check with previous one
-				log.Printf("Receive ProposeSupply! %d %v", sp.TargetId, sp)
-				err := proto.Unmarshal(sp.Cdata.Entity, storageInfo)
-				if err == nil { /// lets start subscribe pcounter.
-					// check handling function.
-					if storageInfo.Stype == storage.StorageType_TYPE_OBJSTORE && storageInfo.Dtype == storage.DataType_DATA_FILE {
-						log.Printf("Type OK")
-						log.Printf("Send Select Supply! %v", sp)
-						mbusID, err = clt.SelectSupply(sp)
-						storageID = sp.SenderId
-						if err != nil {
-							log.Printf("SelectSupply err:%v", err)
-							//				return
-						} else {
-							// start store with mbus.
-
-							go clt.SubscribeMbus(context.Background(), mbusCallback)
-							subscribePCounterSupply(pcClient)
-						}
-					} else {
-						log.Printf("Unknown storage type/data %v", storageInfo)
-					}
-				} else {
-					log.Printf("Cdata Content is broken %v", err)
-				}
-			}
-		}
-	}
-
-}
-
-func subscribeStorageSupply(client *sxutil.SXServiceClient) {
-
 }
 
 func main() {
 	flag.Parse()
 	go sxutil.HandleSigInt()
 	sxutil.RegisterDeferFunction(sxutil.UnRegisterNode)
-	log.Printf("PCounter-ObjStorage(%s) built %s sha1 %s", sxutil.GitVer, sxutil.BuildTime, sxutil.Sha1Ver)
+	log.Printf("PFlow-ObjStorage(%s) built %s sha1 %s", sxutil.GitVer, sxutil.BuildTime, sxutil.Sha1Ver)
 
-	channelTypes := []uint32{pbase.PEOPLE_COUNTER_SVC, pbase.STORAGE_SERVICE}
+	channelTypes := []uint32{pbase.PEOPLE_FLOW_SVC, pbase.STORAGE_SERVICE}
 
 	var rerr error
-	sxServerAddress, rerr = sxutil.RegisterNode(*nodesrv, "PCouterObjStorage", channelTypes, nil)
+	sxServerAddress, rerr = sxutil.RegisterNode(*nodesrv, "PFlowObjStorage", channelTypes, nil)
 
 	if rerr != nil {
 		log.Fatal("Can't register node:", rerr)
@@ -189,38 +123,12 @@ func main() {
 		log.Fatal("Can't connect Synerex Server")
 	}
 
-	stClient = sxutil.NewSXServiceClient(client, pbase.STORAGE_SERVICE, "{Client:PCObjStore}")
-	pcClient = sxutil.NewSXServiceClient(client, pbase.PEOPLE_COUNTER_SVC, "{Client:PcountStore}")
+	stClient = sxutil.NewSXServiceClient(client, pbase.STORAGE_SERVICE, "{Client:PFObjStore}")
+	pfClient = sxutil.NewSXServiceClient(client, pbase.PEOPLE_FLOW_SVC, "{Client:PflowStore}")
 
-	log.Print("Subscribe Storage Supply")
-	ssMu, ssLoop = sxutil.SimpleSubscribeSupply(stClient, supplyStorageCallback)
+	log.Print("Subscribe PFlow Supply")
+	pcMu, pcLoop = sxutil.SimpleSubscribeSupply(pfClient, supplyPFlowCallback)
 	wg.Add(1)
-
-	storageInfo := storage.Storage{
-		Stype: storage.StorageType_TYPE_OBJSTORE,
-		Dtype: storage.DataType_DATA_FILE,
-	}
-
-	out, err := proto.Marshal(&storageInfo)
-	if err == nil {
-		cont := api.Content{Entity: out}
-		// Register supply
-		dmo := sxutil.DemandOpts{
-			Name:  "Storage",
-			Cdata: &cont,
-		}
-		//			fmt.Printf("Res: %v",smo)
-		//_, nerr :=
-		currentNid, err = stClient.NotifyDemand(&dmo)
-		if err == nil {
-			log.Printf("Sending Notify Demand! %d", currentNid)
-		} else {
-			log.Printf("Notify Demend Send Error! %v", err)
-		}
-	}
-
-	//	log.Print("Subscribe Supply")
-	//	go subscribePCounterSupply(pcClient)
 
 	wg.Wait()
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"time"
 
 	pflow "github.com/UCLabNU/proto_pflow"
 	"github.com/golang/protobuf/proto"
@@ -39,6 +40,8 @@ var (
 	pfClient        *sxutil.SXServiceClient = nil
 	stClient        *sxutil.SXServiceClient = nil
 	pfblocks        map[string]*PFlowBlock  = map[string]*PFlowBlock{}
+	bucketName                              = flag.String("bucket", "pflow", "Bucket Name")
+	holdPeriod                              = flag.Int64("holdPeriod", 720, "Flow Data Hold Time")
 )
 
 func init() {
@@ -66,6 +69,28 @@ func objStore(bc string, ob string, dt string) {
 
 }
 
+// saveRecursive : save to objstorage recursive
+func saveRecursive(client *sxutil.SXServiceClient) {
+	// ch := make(chan error)
+	for {
+		time.Sleep(time.Second * time.Duration(60))
+		currentTime := time.Now().Unix() + 9*3600
+		log.Printf("\nCurrent: %d", currentTime)
+		for name, pfblock := range pfblocks {
+			if pfblock.BaseDate+*holdPeriod < currentTime {
+				data, err := json.Marshal(pfblock.PFlows)
+
+				if err == nil {
+					objStore(*bucketName, name, string(data)+"\n")
+					delete(pfblocks, name)
+				} else {
+					log.Printf("Error!!: %+v\n", err)
+				}
+			}
+		}
+	}
+}
+
 // called for each agent data.
 func supplyPFlowCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 
@@ -77,21 +102,17 @@ func supplyPFlowCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 
 		// how to define Bucket:
 
-		bucketName := "pflow"
 		// we use IP address for sensor_id
 		//		objectName := "area/year/month/date/hour/min"
 		objectName := fmt.Sprintf("%s/%4d/%02d/%02d/%02d/%02d", pc.Area, tsd.Year(), tsd.Month(), tsd.Day(), tsd.Hour(), tsd.Minute())
 
-		data, err := json.Marshal(pc)
-
-		if err == nil {
-			// log.Printf("Storing: %+v\n", data)
-			// pfblocks に登録
-			// 30秒程度ごとに pfblocks を監視
-			// prevlen と長さが同じになったもの かつ 最低1分は経った block から objStore
-			objStore(bucketName, objectName, string(data)+"\n")
+		if pfblock, exists := pfblocks[objectName]; exists {
+			pfblock.PFlows = append(pfblock.PFlows, pc)
 		} else {
-			log.Printf("Error!!: %+v\n", err)
+			pfblocks[objectName] = &PFlowBlock{
+				BaseDate: tsd.Unix(),
+				PFlows:   []*pflow.PFlow{pc},
+			}
 		}
 	}
 }
@@ -129,6 +150,8 @@ func main() {
 	log.Print("Subscribe PFlow Supply")
 	pcMu, pcLoop = sxutil.SimpleSubscribeSupply(pfClient, supplyPFlowCallback)
 	wg.Add(1)
+
+	go saveRecursive(pfClient)
 
 	wg.Wait()
 

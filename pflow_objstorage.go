@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"strings"
 	"time"
 
 	pflow "github.com/UCLabNU/proto_pflow"
@@ -40,9 +41,11 @@ var (
 	pfClient        *sxutil.SXServiceClient = nil
 	stClient        *sxutil.SXServiceClient = nil
 	pfblocks        map[string]*PFlowBlock  = map[string]*PFlowBlock{}
-	bucketName                              = flag.String("bucket", "pflow", "Bucket Name")
+	bucketName                              = flag.String("bucket", "centrair", "Bucket Name")
 	holdPeriod                              = flag.Int64("holdPeriod", 720, "Flow Data Hold Time")
 )
+
+const layout = "2006-01-02T15:04:05.999999Z"
 
 func init() {
 }
@@ -79,9 +82,16 @@ func saveRecursive(client *sxutil.SXServiceClient) {
 		for name, pfblock := range pfblocks {
 			if pfblock.BaseDate+*holdPeriod < currentTime {
 				data, err := json.Marshal(pfblock.PFlows)
+				csvData := []string{}
+				for _, pflow := range pfblock.PFlows {
+					st, _ := time.Parse(layout, ptypes.TimestampString(pflow.StartTime))
+					et, _ := time.Parse(layout, ptypes.TimestampString(pflow.EndTime))
+					csvData = append(csvData, fmt.Sprintf("%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%s,%d,%s", st.Format(layout), et.Format(layout), pflow.Operation[0].Longitude, pflow.Operation[0].Latitude, pflow.Operation[0].Z, pflow.Operation[1].Longitude, pflow.Operation[1].Latitude, pflow.Operation[1].Z, pflow.Type, pflow.Id, pflow.Area))
+				}
 
 				if err == nil {
 					objStore(*bucketName, name, string(data)+"\n")
+					objStore(*bucketName, strings.Replace(name, "PFLOW_JSON", "PFLOW_CSV", -1), strings.Join(csvData, "\n")+"\n")
 					delete(pfblocks, name)
 				} else {
 					log.Printf("Error!!: %+v\n", err)
@@ -104,7 +114,7 @@ func supplyPFlowCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 
 		// we use IP address for sensor_id
 		//		objectName := "area/year/month/date/hour/min"
-		objectName := fmt.Sprintf("%s/%4d/%02d/%02d/%02d/%02d", pc.Area, tsd.Year(), tsd.Month(), tsd.Day(), tsd.Hour(), tsd.Minute())
+		objectName := fmt.Sprintf("%s/%s/%4d/%02d/%02d/%02d/%02d", "PFLOW_JSON", pc.Area, tsd.Year(), tsd.Month(), tsd.Day(), tsd.Hour(), tsd.Minute())
 
 		if pfblock, exists := pfblocks[objectName]; exists {
 			pfblock.PFlows = append(pfblock.PFlows, pc)

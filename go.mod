@@ -3,7 +3,7 @@ module pflow_objstorage
 go 1.15
 
 require (
-	github.com/UCLabNU/proto_pflow v0.0.3
+	github.com/UCLabNU/proto_pflow v0.0.5
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/protobuf v1.4.3
 	github.com/google/go-cmp v0.5.2 // indirect
@@ -11,7 +11,6 @@ require (
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/shirou/gopsutil v3.20.12+incompatible // indirect
 	github.com/synerex/proto_pcounter v0.0.6
-	github.com/synerex/proto_pflow v0.0.3
 	github.com/synerex/proto_storage v0.2.0
 	github.com/synerex/synerex_api v0.4.2
 	github.com/synerex/synerex_proto v0.1.10

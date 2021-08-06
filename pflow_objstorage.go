@@ -1,9 +1,10 @@
 package main
 
 import (
-	"encoding/json"
+	// "encoding/json"
 	"flag"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -81,21 +82,21 @@ func saveRecursive(client *sxutil.SXServiceClient) {
 		log.Printf("\nCurrent: %d", currentTime)
 		for name, pfblock := range pfblocks {
 			if pfblock.BaseDate+*holdPeriod < currentTime {
-				data, err := json.Marshal(pfblock.PFlows)
+				// data, err := json.Marshal(pfblock.PFlows)
 				csvData := []string{}
-				for _, pflow := range pfblock.PFlows {
-					st, _ := time.Parse(layout, ptypes.TimestampString(pflow.StartTime))
-					et, _ := time.Parse(layout, ptypes.TimestampString(pflow.EndTime))
-					csvData = append(csvData, fmt.Sprintf("%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%s,%d,%s", st.Format(layout), et.Format(layout), pflow.Operation[0].Longitude, pflow.Operation[0].Latitude, pflow.Operation[0].Z, pflow.Operation[1].Longitude, pflow.Operation[1].Latitude, pflow.Operation[1].Z, pflow.Type, pflow.Id, pflow.Area))
+				for _, pf := range pfblock.PFlows {
+					st, _ := time.Parse(layout, ptypes.TimestampString(pf.Operation[0].Timestamp))
+					et, _ := time.Parse(layout, ptypes.TimestampString(pf.Operation[1].Timestamp))
+					csvData = append(csvData, fmt.Sprintf("%s,%s,%d,%d,%d,%d,%d", st.Format(layout), et.Format(layout), pf.Operation[0].Sid, pf.Operation[1].Sid, pf.Operation[0].Height, pf.Operation[1].Height, pf.Id))
 				}
 
-				if err == nil {
-					objStore(*bucketName, name, string(data)+"\n")
-					objStore(*bucketName, strings.Replace(name, "PFLOW_JSON", "PFLOW_CSV", -1), strings.Join(csvData, "\n")+"\n")
-					delete(pfblocks, name)
-				} else {
-					log.Printf("Error!!: %+v\n", err)
-				}
+				// if err == nil {
+				sort.Strings(csvData)
+				objStore(*bucketName, name, strings.Join(csvData, "\n")+"\n")
+				delete(pfblocks, name)
+				// 	} else {
+				// 		log.Printf("Error!!: %+v\n", err)
+				// 	}
 			}
 		}
 	}
@@ -108,13 +109,13 @@ func supplyPFlowCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 
 	err := proto.Unmarshal(sp.Cdata.Entity, pc)
 	if err == nil { // get PFlow
-		tsd, _ := ptypes.Timestamp(pc.StartTime)
+		tsd, _ := ptypes.Timestamp(pc.Operation[0].Timestamp)
 
 		// how to define Bucket:
 
 		// we use IP address for sensor_id
 		//		objectName := "area/year/month/date/hour/min"
-		objectName := fmt.Sprintf("%s/%s/%4d/%02d/%02d/%02d/%02d", "PFLOW_JSON", pc.Area, tsd.Year(), tsd.Month(), tsd.Day(), tsd.Hour(), tsd.Minute())
+		objectName := fmt.Sprintf("%s/%s/%4d/%02d/%02d/%02d/%02d", "PFLOW", pc.Area, tsd.Year(), tsd.Month(), tsd.Day(), tsd.Hour(), tsd.Minute())
 
 		if pfblock, exists := pfblocks[objectName]; exists {
 			pfblock.PFlows = append(pfblock.PFlows, pc)

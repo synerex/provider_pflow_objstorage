@@ -6,6 +6,8 @@ github.com/UCLabNU/proto_pflow v0.0.2 h1:aNBwNICZBUH3Nao7auCRwgRt1V8Z9Wgbw+Py+nb
 github.com/UCLabNU/proto_pflow v0.0.2/go.mod h1:nGwxhwzmfrvIa+1GrGphU2GcfTDSrRujktm9eNFrCQE=
 github.com/UCLabNU/proto_pflow v0.0.3 h1:nueBY4khsqkhekVisvjFBrB9r0oxH1KGFB2bBImm7TE=
 github.com/UCLabNU/proto_pflow v0.0.3/go.mod h1:nGwxhwzmfrvIa+1GrGphU2GcfTDSrRujktm9eNFrCQE=
+github.com/UCLabNU/proto_pflow v0.0.5 h1:JWvAe7m9t4Pq02BpsGHbuOqesnyOh42OZdISNVIwXYA=
+github.com/UCLabNU/proto_pflow v0.0.5/go.mod h1:nGwxhwzmfrvIa+1GrGphU2GcfTDSrRujktm9eNFrCQE=
 github.com/bwmarrin/snowflake v0.3.0 h1:xm67bEhkKh6ij1790JB83OujPR5CzNe8QuQqAgISZN0=
 github.com/bwmarrin/snowflake v0.3.0/go.mod h1:NdZxfVWX+oR6y2K0o6qAYv6gIOP9rjG0/E9WsDpxqwE=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
